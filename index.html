@@ -265,6 +265,8 @@
     iconHeartFull:      'assets/ui/icon_heart_full.png',
     iconHeartEmpty:     'assets/ui/icon_heart_empty.png',
     iconHP:             'assets/ui/icon_HP.png',
+    iconPlayerFullPower:'assets/ui/icon_playerfullpower.png',
+    iconBabyFullSpeed:  'assets/ui/icon_babyfullspeed.png',
     iconCoin:           'assets/ui/icon_coin.png',
     iconWind:           'assets/ui/icon_wind.png',
     badgeLevel:         'assets/ui/badge_level.png',
@@ -674,6 +676,10 @@
     ctx.save();
     ctx.translate(dragon.x, dragon.y + bobY);
     ctx.rotate(tilt);
+    if (playerPowerBuffTimer > 0) {
+      const gp = 0.55 + Math.sin(flapTime * 12) * 0.45;
+      ctx.shadowColor = '#ffffaa'; ctx.shadowBlur = 30 * gp;
+    }
     if (dragon.invulnTimer > 0 && Math.floor(flapTime * 12) % 2 === 0) {
       ctx.globalAlpha = 0.35;
     }
@@ -725,6 +731,7 @@
       buttonRestart: ASSETS.buttonRestart, buttonResume: ASSETS.buttonResume, buttonMainMenu: ASSETS.buttonMainMenu,
       btnPause: ASSETS.btnPause, btnSkill: ASSETS.btnSkill,
       iconHeartFull: ASSETS.iconHeartFull, iconHeartEmpty: ASSETS.iconHeartEmpty, iconHP: ASSETS.iconHP,
+      iconPlayerFullPower: ASSETS.iconPlayerFullPower, iconBabyFullSpeed: ASSETS.iconBabyFullSpeed,
       iconCoin: ASSETS.iconCoin, iconWind: ASSETS.iconWind, badgeLevel: ASSETS.badgeLevel,
       barXpBg: ASSETS.barXpBg, barXpFill: ASSETS.barXpFill,
       barBossBg: ASSETS.barBossBg, barBossFill: ASSETS.barBossFill,
@@ -2476,6 +2483,11 @@
   const windPickups = [];
   const hpPickups = [];
   let stageHpDrops = 0;
+  const buff1Pickups = []; let stageBuff1Drops = 0;
+  const buff2Pickups = []; let stageBuff2Drops = 0;
+  let babySpeedBuffTimer = 0;
+  let playerPowerBuffTimer = 0;
+  let _prePowerBullets = 1, _prePowerFireRate = 1;
   function spawnWindPickup(x, y, amount) {
     const angle = Math.random() * Math.PI * 2;
     const speed = 25 + Math.random() * 20;
@@ -2576,6 +2588,64 @@
       }
     }
   }
+
+  function _spawnBuffPickup(arr, x, y) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 25 + Math.random() * 20;
+    arr.push({ x, y, vx: Math.cos(angle)*speed, vy: Math.sin(angle)*speed,
+      wanderAngle: angle, radius: 16, alive: true, age: 0 });
+  }
+  function _updateBuffPickups(arr, dt, onCollect) {
+    const margin = 16;
+    for (const h of arr) {
+      h.age += dt;
+      h.wanderAngle += (Math.random() - 0.5) * 1.2 * dt;
+      const speed = Math.hypot(h.vx, h.vy);
+      h.vx = Math.cos(h.wanderAngle) * speed; h.vy = Math.sin(h.wanderAngle) * speed;
+      h.x += h.vx * dt; h.y += h.vy * dt;
+      if (h.x < margin)          { h.x = margin;          h.wanderAngle = Math.PI - h.wanderAngle; }
+      if (h.x > GAME_W - margin) { h.x = GAME_W - margin;  h.wanderAngle = Math.PI - h.wanderAngle; }
+      if (h.y < margin)          { h.y = margin;           h.wanderAngle = -h.wanderAngle; }
+      if (h.y > GAME_H - margin) { h.y = GAME_H - margin;  h.wanderAngle = -h.wanderAngle; }
+      const dx = h.x - dragon.x, dy = h.y - dragon.y;
+      if (dx*dx + dy*dy <= (h.radius + stats.pickupRadius) ** 2) { h.alive = false; onCollect(); SFX.windPickup(); }
+    }
+    for (let i = arr.length - 1; i >= 0; i--) if (!arr[i].alive) arr.splice(i, 1);
+  }
+  function _drawBuffPickups(arr, iconKey, glowColor) {
+    const icon = imgs[iconKey];
+    for (const h of arr) {
+      const pulse = 1 + Math.sin(h.age * 6) * 0.18;
+      const s = h.radius * 3.2 * pulse;
+      ctx.save();
+      ctx.shadowColor = glowColor; ctx.shadowBlur = 14 * pulse;
+      if (icon && icon.ready) {
+        ctx.globalAlpha = 0.95;
+        ctx.drawImage(icon.img, h.x - s/2, h.y - s/2, s, s);
+        ctx.globalAlpha = 1;
+      } else {
+        ctx.fillStyle = glowColor;
+        ctx.beginPath(); ctx.arc(h.x, h.y, h.radius * pulse, 0, Math.PI*2); ctx.fill();
+      }
+      ctx.restore();
+    }
+  }
+  function spawnBuff1Pickup(x, y) { _spawnBuffPickup(buff1Pickups, x, y); }
+  function updateBuff1Pickups(dt) {
+    _updateBuffPickups(buff1Pickups, dt, () => { babySpeedBuffTimer = 3.0; });
+  }
+  function drawBuff1Pickups() { _drawBuffPickups(buff1Pickups, 'iconBabyFullSpeed', '#aaff44'); }
+  function spawnBuff2Pickup(x, y) { _spawnBuffPickup(buff2Pickups, x, y); }
+  function updateBuff2Pickups(dt) {
+    _updateBuffPickups(buff2Pickups, dt, () => {
+      _prePowerBullets = stats.bulletCount;
+      _prePowerFireRate = stats.fireRateMult;
+      stats.bulletCount = 6;
+      stats.fireRateMult *= 0.5;
+      playerPowerBuffTimer = 3.0;
+    });
+  }
+  function drawBuff2Pickups() { _drawBuffPickups(buff2Pickups, 'iconPlayerFullPower', '#ff9900'); }
 
   function drawWindMagnetAura() {
     if (stats.pickupRadius <= 40) return;
@@ -2741,6 +2811,14 @@
       if (!e.isBoss && hpPickups.length === 0 && stageHpDrops < 3) {
         const hpRate = ((phase === PHASE.BOSS_FIGHT) ? 0.05 : (phase === PHASE.ELITE) ? (0.01 + Math.random() * 0.02) : (Math.random() * 0.01)) + (dragon.hp <= 1 ? 0.05 : 0);
         if (Math.random() < hpRate) { spawnHpPickup(e.x, e.y); stageHpDrops++; }
+      }
+      if (!e.isBoss && buff1Pickups.length === 0 && stageBuff1Drops < 2) {
+        const b1Rate = ((phase === PHASE.BOSS_FIGHT) ? 0.06 : (phase === PHASE.ELITE) ? 0.04 : 0.02) + (dragon.hp <= 1 ? 0.03 : 0);
+        if (Math.random() < b1Rate) { spawnBuff1Pickup(e.x, e.y); stageBuff1Drops++; }
+      }
+      if (!e.isBoss && buff2Pickups.length === 0 && stageBuff2Drops < 1) {
+        const b2Rate = ((phase === PHASE.BOSS_FIGHT) ? 0.03 : (phase === PHASE.ELITE) ? 0.015 : 0.005) + (dragon.hp <= 1 ? 0.03 : 0);
+        if (Math.random() < b2Rate) { spawnBuff2Pickup(e.x, e.y); stageBuff2Drops++; }
       }
       if (e.isBoss) {
         bossDefeated = true;
@@ -3259,6 +3337,7 @@
   function advanceToStage2() {
     currentStage = 2;
     stageHpDrops = 0; hpPickups.length = 0;
+    stageBuff1Drops = 0; buff1Pickups.length = 0; stageBuff2Drops = 0; buff2Pickups.length = 0;
     enemies.length = 0; enemyBullets.length = 0;
     stageTime = 0; phase = PHASE.OPENING; warningTimer = 0;
     bossSpawned = false; bossDefeated = false;
@@ -3270,6 +3349,7 @@
   function advanceToStage3() {
     currentStage = 3;
     stageHpDrops = 0; hpPickups.length = 0;
+    stageBuff1Drops = 0; buff1Pickups.length = 0; stageBuff2Drops = 0; buff2Pickups.length = 0;
     enemies.length = 0; enemyBullets.length = 0;
     stageTime = 0; phase = PHASE.OPENING; warningTimer = 0;
     bossSpawned = false; bossDefeated = false;
@@ -3910,7 +3990,7 @@
 
       b.fireTimer -= dt;
       if (b.fireTimer <= 0) {
-        b.fireTimer = b.type.fireRate * (stats.babyDragonFireRateMult || 1);
+        b.fireTimer = b.type.fireRate * (stats.babyDragonFireRateMult || 1) * (babySpeedBuffTimer > 0 ? 0.25 : 1);
         let nearest = null, nearestDist = Infinity;
         for (const e of enemies) {
           if (!e.alive) continue;
@@ -3942,6 +4022,10 @@
       ctx.save();
       ctx.translate(b.x, b.y + bobY);
       ctx.rotate(tilt);
+      if (babySpeedBuffTimer > 0) {
+        const gp = 0.55 + Math.sin(flapTime * 14) * 0.45;
+        ctx.shadowColor = '#ff9900'; ctx.shadowBlur = 22 * gp;
+      }
       const bImg = imgs[b.type.imgKey];
       if (bImg && bImg.ready) {
         ctx.drawImage(bImg.img, -BABY_DRAW_SIZE/2, -BABY_DRAW_SIZE/2, BABY_DRAW_SIZE, BABY_DRAW_SIZE);
@@ -4815,7 +4899,10 @@
     Object.assign(stats, INITIAL_STATS);
     stats.stacks = {};
     bullets.length = 0; enemyBullets.length = 0; enemies.length = 0;
-    windPickups.length = 0; hpPickups.length = 0; stageHpDrops = 0; chainBolts.length = 0;
+    windPickups.length = 0; hpPickups.length = 0; stageHpDrops = 0;
+    buff1Pickups.length = 0; buff2Pickups.length = 0; stageBuff1Drops = 0; stageBuff2Drops = 0;
+    babySpeedBuffTimer = 0; playerPowerBuffTimer = 0;
+    chainBolts.length = 0;
     babyDragons.length = 0; babyBullets.length = 0;
     coinScore = 0; windTotal = 0; playerLevel = 1; leveledUpFlash = 0;
     fireTimer = 0; extraShotRemaining = 0; extraShotTimer = 0; auraTickTimer = 0; flapTime = 0;
@@ -4881,7 +4968,12 @@
     // Booster selection
     if (e.key === '0') openBoosterSelection();
     // Trigger ending dialogue scene
-    if (e.key === 'p') { endingDialoguePage = 0; endingFading = false; endingFadeTimer = 0; goToScreen(SCREEN.ENDING_DIALOGUE); }
+    if (e.key === 'Enter') { endingDialoguePage = 0; endingFading = false; endingFadeTimer = 0; goToScreen(SCREEN.ENDING_DIALOGUE); }
+    // Debug drop hotkeys
+    if (e.key === 'p' || e.key === 'P') spawnHpPickup(dragon.x + (Math.random()-0.5)*80, dragon.y - 60);
+    if (e.key === 'o' || e.key === 'O') spawnWindPickup(dragon.x + (Math.random()-0.5)*80, dragon.y - 60, 20);
+    if (e.key === 'k' || e.key === 'K') spawnBuff1Pickup(dragon.x + (Math.random()-0.5)*80, dragon.y - 60);
+    if (e.key === 'l' || e.key === 'L') spawnBuff2Pickup(dragon.x + (Math.random()-0.5)*80, dragon.y - 60);
   });
 
   // ===================================================================
@@ -4912,6 +5004,8 @@
       updateEnemyBullets(dt);
       updateWindPickups(dt);
       updateHpPickups(dt);
+      updateBuff1Pickups(dt);
+      updateBuff2Pickups(dt);
       updateAuraAndNova(dt);
       updateChainBolts(dt);
       updateExplodeEffects(dt);
@@ -4928,6 +5022,15 @@
       updateBossDeathFX(dt);
       coinScore += 1 * dt;
       if (leveledUpFlash > 0) leveledUpFlash -= dt;
+      if (babySpeedBuffTimer > 0) babySpeedBuffTimer = Math.max(0, babySpeedBuffTimer - dt);
+      if (playerPowerBuffTimer > 0) {
+        playerPowerBuffTimer -= dt;
+        if (playerPowerBuffTimer <= 0) {
+          playerPowerBuffTimer = 0;
+          stats.bulletCount = _prePowerBullets;
+          stats.fireRateMult *= 2;
+        }
+      }
     }
 
     // Screen shake — save every frame, translate only when shaking
@@ -4947,6 +5050,8 @@
     drawBossChargeEffect();
     drawWindPickups();
     drawHpPickups();
+    drawBuff1Pickups();
+    drawBuff2Pickups();
     drawAuraAndNova();
     drawBullets();
     drawBabyBullets();
