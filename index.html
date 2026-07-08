@@ -264,6 +264,7 @@
     btnSkill:           'assets/ui/btn_skill.png',
     iconHeartFull:      'assets/ui/icon_heart_full.png',
     iconHeartEmpty:     'assets/ui/icon_heart_empty.png',
+    iconHP:             'assets/ui/icon_HP.png',
     iconCoin:           'assets/ui/icon_coin.png',
     iconWind:           'assets/ui/icon_wind.png',
     badgeLevel:         'assets/ui/badge_level.png',
@@ -723,7 +724,7 @@
       buttonStartAdventure: ASSETS.buttonStartAdventure, buttonBack: ASSETS.buttonBack,
       buttonRestart: ASSETS.buttonRestart, buttonResume: ASSETS.buttonResume, buttonMainMenu: ASSETS.buttonMainMenu,
       btnPause: ASSETS.btnPause, btnSkill: ASSETS.btnSkill,
-      iconHeartFull: ASSETS.iconHeartFull, iconHeartEmpty: ASSETS.iconHeartEmpty,
+      iconHeartFull: ASSETS.iconHeartFull, iconHeartEmpty: ASSETS.iconHeartEmpty, iconHP: ASSETS.iconHP,
       iconCoin: ASSETS.iconCoin, iconWind: ASSETS.iconWind, badgeLevel: ASSETS.badgeLevel,
       barXpBg: ASSETS.barXpBg, barXpFill: ASSETS.barXpFill,
       barBossBg: ASSETS.barBossBg, barBossFill: ASSETS.barBossFill,
@@ -2559,7 +2560,7 @@
     }
   }
   function drawHpPickups() {
-    const hIcon = imgs.iconHeartFull;
+    const hIcon = imgs.iconHP;
     for (const h of hpPickups) {
       const pulse = 1 + Math.sin(h.age * 6) * 0.15;
       const s = h.radius * 2.8 * pulse;
